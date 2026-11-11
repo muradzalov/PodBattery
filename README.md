@@ -21,7 +21,31 @@ There's no account, no network access, no admin rights and no Microsoft Store. I
 
 ## Install
 
-You need Windows 10 1809 or later (x64) and the [.NET 10 SDK](https://dotnet.microsoft.com/download).
+On any Windows 10 (1809 or later) or Windows 11 PC (x64), paste this into PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/muradzalov/PodBattery/main/get.ps1 | iex
+```
+
+It installs PodBattery in about a minute, with no admin rights and nothing else to install:
+- Downloads the latest [release](https://github.com/muradzalov/PodBattery/releases/latest) and checks its SHA-256.
+- Installs it to `%LOCALAPPDATA%\Programs\PodBattery`.
+- Adds **PodBattery** shortcuts to the Start menu and the desktop.
+- Sets it to start with Windows, and launches it.
+
+Run the same command again to update. To skip the desktop shortcut or starting with Windows, use:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/muradzalov/PodBattery/main/get.ps1))) -NoDesktopShortcut -NoStartup
+```
+
+You can also download `PodBattery.exe` from the [releases page](https://github.com/muradzalov/PodBattery/releases/latest) and run it from anywhere. It needs nothing else installed. It isn't code-signed, so Windows may say "Windows protected your PC" the first time; choose *More info → Run anyway*.
+
+If you choose **Exit** by accident, start it again from either shortcut (or just sign in again). Opening it while it's already running shows a notification pointing to its icon.
+
+### Build from source
+
+You need the [.NET 10 SDK](https://dotnet.microsoft.com/download).
 
 ```powershell
 git clone https://github.com/muradzalov/PodBattery.git
@@ -29,9 +53,7 @@ cd PodBattery
 powershell -ExecutionPolicy Bypass -File .\install.ps1     # options: -NoStartup, -NoDesktopShortcut
 ```
 
-This builds the app into `%LOCALAPPDATA%\Programs\PodBattery`, adds **PodBattery** shortcuts to the Start menu and desktop, starts it, and adds it to your login items. Run it again to update.
-
-If you choose **Exit** by accident, start it again from either shortcut (or just sign in again). Opening it while it's already running shows a notification pointing to its icon.
+This installs it the same way, but builds it from the code instead of downloading it.
 
 ## First run: "Find my AirPods"
 
@@ -82,6 +104,13 @@ Untick **Start with Windows**, then choose **Exit** from the menu. (Alternativel
 ```powershell
 dotnet test                                # unit tests for the decoder and tracker
 dotnet run --project src/PodBattery -- --log
+```
+
+To release a new version, push a version tag. The [Release workflow](.github/workflows/release.yml) runs the tests, builds `PodBattery.exe` and publishes it as the latest release, which is what the installer command downloads:
+
+```powershell
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 ## Credits
