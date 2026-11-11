@@ -1,6 +1,8 @@
 # PodBattery
 
-A tiny Windows tray app that shows your AirPods battery levels: left, right, case, and whether each is charging.
+**An AirPods battery indicator for the Windows system tray.**
+
+See the battery level of your left earbud, right earbud and case, and whether each is charging, right in the Windows notification area. No iPhone needed.
 
 The tray icon shows the lower of your two earbuds' battery levels, colored green, amber or red. Hover over it for a summary. Click it to see:
 
