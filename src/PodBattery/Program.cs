@@ -5,9 +5,14 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        // Launching it again (e.g. from the desktop shortcut) while it's running asks the running copy to say where it is.
+        using var showRequest = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\PodBattery.Show");
         using var singleInstance = new Mutex(initiallyOwned: true, @"Local\PodBattery", out var isFirstInstance);
         if (!isFirstInstance)
+        {
+            showRequest.Set();
             return;
+        }
 
         // A tray app should never pop up error dialogs: log unexpected errors and keep running.
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
@@ -15,7 +20,7 @@ internal static class Program
         AppDomain.CurrentDomain.UnhandledException += (_, e) => ErrorLog.Write(e.ExceptionObject as Exception);
 
         ApplicationConfiguration.Initialize();
-        Application.Run(new TrayApp(forceLog: args.Contains("--log", StringComparer.OrdinalIgnoreCase)));
+        Application.Run(new TrayApp(showRequest, forceLog: args.Contains("--log", StringComparer.OrdinalIgnoreCase)));
     }
 }
 

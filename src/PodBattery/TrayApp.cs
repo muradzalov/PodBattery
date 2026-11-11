@@ -36,9 +36,15 @@ internal sealed class TrayApp : ApplicationContext
     private bool _announceNextLock;
     private bool _iconReshown;
     private string _iconKey = "";
+    private readonly RegisteredWaitHandle _showWait;
+    private int _showRequested;
 
-    public TrayApp(bool forceLog)
+    /// <param name="showRequest">Signalled when PodBattery is launched again while already running.</param>
+    public TrayApp(WaitHandle showRequest, bool forceLog)
     {
+        _showWait = ThreadPool.RegisterWaitForSingleObject(
+            showRequest, (_, _) => Interlocked.Exchange(ref _showRequested, 1), null, Timeout.Infinite, executeOnlyOnce: false);
+
         var (settings, firstRun) = Settings.Load();
         _tracker = new PodTracker(ModelsToWatch(), settings.LockRssi);
         if (settings.Log || forceLog)
@@ -148,6 +154,14 @@ internal sealed class TrayApp : ApplicationContext
             _iconReshown = true;
             _tray.Visible = false;
             _tray.Visible = true;
+        }
+
+        // Launched again (shortcut double-clicked) while already running: say where we are instead of doing nothing.
+        if (Interlocked.Exchange(ref _showRequested, 0) == 1)
+        {
+            var status = view.Pods is { } shown ? Summary(shown) + "\n" : "";
+            _tray.ShowBalloonTip(5000, "PodBattery is already running",
+                status + "Its icon is in the notification area (you may need the ^ arrow).", ToolTipIcon.Info);
         }
 
         if (Interlocked.Exchange(ref _lockedSinceLastTick, 0) == 1 && _announceNextLock && view.Pods is { } pods)
@@ -276,6 +290,7 @@ internal sealed class TrayApp : ApplicationContext
     protected override void ExitThreadCore()
     {
         Microsoft.Win32.SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+        _showWait.Unregister(null);
         _timer.Dispose();
         _scanner?.Dispose();
         _tray.Visible = false;

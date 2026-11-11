@@ -26,10 +26,12 @@ You need Windows 10 1809 or later (x64) and the [.NET 10 SDK](https://dotnet.mic
 ```powershell
 git clone https://github.com/muradzalov/PodBattery.git
 cd PodBattery
-powershell -ExecutionPolicy Bypass -File .\install.ps1     # add -NoStartup to skip starting with Windows
+powershell -ExecutionPolicy Bypass -File .\install.ps1     # options: -NoStartup, -NoDesktopShortcut
 ```
 
-This builds the app into `%LOCALAPPDATA%\Programs\PodBattery`, starts it, and adds it to your login items. Run it again to update.
+This builds the app into `%LOCALAPPDATA%\Programs\PodBattery`, adds **PodBattery** shortcuts to the Start menu and desktop, starts it, and adds it to your login items. Run it again to update.
+
+If you choose **Exit** by accident, start it again from either shortcut (or just sign in again). Opening it while it's already running shows a notification pointing to its icon.
 
 ## First run: "Find my AirPods"
 
@@ -73,7 +75,7 @@ See [`PodTracker.cs`](src/PodBattery/PodTracker.cs) for the rules and [`Proximit
 
 ## Uninstall
 
-Choose **Exit** from the menu and untick **Start with Windows** first (or delete the `PodBattery` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`). Then delete `%LOCALAPPDATA%\Programs\PodBattery` and `%APPDATA%\PodBattery`.
+Untick **Start with Windows**, then choose **Exit** from the menu. (Alternatively, delete the `PodBattery` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.) Then delete `%LOCALAPPDATA%\Programs\PodBattery`, `%APPDATA%\PodBattery` and the two `PodBattery` shortcuts: one on the desktop, the other in `%APPDATA%\Microsoft\Windows\Start Menu\Programs`.
 
 ## Develop
 
