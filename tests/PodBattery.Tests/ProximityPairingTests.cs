@@ -16,7 +16,15 @@ public class ProximityPairingTests
         Assert.Null(ad.Case);
         Assert.False(ad.LeftCharging || ad.RightCharging || ad.CaseCharging);
         Assert.Equal(0x11, ad.Lid);
+        Assert.False(ad.CaseOpen);   // worn
     }
+
+    [Theory]
+    [InlineData("071901242034FAFA31000029", true)]    // owner's case opened next to the PC (both in case, lid open)
+    [InlineData("071901242025AADA310000", true)]
+    [InlineData("071901242035AA8F390000", false)]     // lid just closed (0x08 set)
+    [InlineData("071901242022F68F100005", false)]     // one earbud in someone's ear
+    public void Recognises_an_open_case(string hex, bool open) => Assert.Equal(open, Parse(hex)!.CaseOpen);
 
     [Fact]
     public void Decodes_swapped_order_and_charging_flags()

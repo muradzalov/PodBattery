@@ -43,6 +43,11 @@ internal sealed class BleScanner : IDisposable
 
     private void OnReceived(BluetoothLEAdvertisementWatcher sender, BluetoothLEAdvertisementReceivedEventArgs e)
     {
+        // About 60 s after a device stops broadcasting, Windows reports it once more at -127 dBm with its last
+        // payload. That's "gone out of range", not a broadcast, so it must not count as hearing the AirPods.
+        if (e.RawSignalStrengthInDBm <= PodTracker.OutOfRange)
+            return;
+
         foreach (var section in e.Advertisement.ManufacturerData)
         {
             if (section.CompanyId != ProximityPairing.AppleCompanyId)

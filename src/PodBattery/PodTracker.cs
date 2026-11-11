@@ -27,25 +27,36 @@ public sealed record PodSnapshot(ushort Model, PodValue? Left, PodValue? Right, 
 /// AirPods broadcast from anonymous Bluetooth addresses that change every 15 minutes or so, and nothing in the
 /// readable part of the broadcast identifies the owner. Each earbud has its own address. So:
 /// <list type="number">
-/// <item><b>Lock on</b> to AirPods with a consistently very strong signal (case opened right next to the PC), when asked to via
-/// <see cref="StartFinding"/> or once yours haven't been heard for <see cref="RelockAfter"/>. Shortly after locking,
-/// a second strong, matching address is your other earbud.</item>
-/// <item><b>Follow</b> a change of address. A pair starts broadcasting from its new address shortly before the old
-/// one stops, so once yours has gone quiet, the strongest <em>recently appeared</em> address with matching battery
-/// levels and a similar signal strength is yours. Addresses that were around long before can't be.</item>
+/// <item><b>Lock on</b> to a case opened right next to the PC (both earbuds in the case, lid open, very strong
+/// signal) once yours haven't been heard for <see cref="RelockAfter"/>, or when the current identity only came from
+/// following. AirPods in someone's ears never trigger this. In Find mode (<see cref="StartFinding"/>), any AirPods
+/// held next to the PC with a consistently very strong signal count. Shortly after locking, a second strong,
+/// matching address is your other earbud.</item>
+/// <item><b>Follow</b> a change of address. In recordings, a pair's new address starts broadcasting within about
+/// 0.5-30 s of the old one's last broadcast. So once yours has been quiet for <see cref="FollowAfterQuiet"/>, the
+/// strongest address that <em>first appeared in that moment</em>, with matching battery levels and lid state and a
+/// similar signal strength, is yours. Addresses that were around before can't be.</item>
 /// </list>
+/// Windows also reports an address once more, with RSSI -127 and its last payload, about 60 s after it stops; that
+/// isn't a broadcast, so it is ignored.
 /// </remarks>
 public sealed class PodTracker
 {
-    public static readonly TimeSpan FollowAfterQuiet = TimeSpan.FromSeconds(10);
+    /// <summary>Reception gaps of 10-14 s happen while you're wearing them, so wait longer than that.</summary>
+    public static readonly TimeSpan FollowAfterQuiet = TimeSpan.FromSeconds(20);
     public static readonly TimeSpan FollowWindow = TimeSpan.FromMinutes(3);
-    public static readonly TimeSpan NewAddressWindow = TimeSpan.FromMinutes(3);
+    public static readonly TimeSpan NewAddressBefore = TimeSpan.FromSeconds(20);
+    public static readonly TimeSpan NewAddressAfter = TimeSpan.FromSeconds(40);
     public static readonly TimeSpan RelockAfter = TimeSpan.FromMinutes(2);
     public static readonly TimeSpan SiblingWindow = TimeSpan.FromSeconds(60);
     public static readonly TimeSpan ForgetAfter = TimeSpan.FromMinutes(20);
+    public const int OutOfRange = -127;
+    private const int LockSamples = 3;
     private const int FollowRssiFloor = -85;
-    private const int FollowRssiSlack = 12;
+    private const int FollowRssiSlack = 8;
+    private const int FollowSamples = 2;
     private const int BatteryTolerance = 10;
+    private static readonly TimeSpan SmoothingGap = TimeSpan.FromSeconds(10);
 
     /// <summary>What we know about one broadcasting address of a watched model.</summary>
     private sealed class Heard(DateTimeOffset now, int rssi, PodAdvert ad)
@@ -57,8 +68,8 @@ public sealed class PodTracker
         public int Samples { get; set; } = 1;
         public PodAdvert Ad { get; set; } = ad;
 
-        /// <summary>Consistently strong, not a one-off spike: a neighbour's AirPods can briefly read a few dB from the threshold.</summary>
-        public bool IsClose(int lockRssi) => Samples >= 2 && Rssi >= lockRssi;
+        /// <summary>Consistently strong, not a spike: a neighbour's AirPods can briefly read a few dB from the threshold.</summary>
+        public bool IsClose(int lockRssi) => Samples >= LockSamples && Rssi >= lockRssi;
     }
 
     private readonly HashSet<ushort> _models = [];
@@ -71,6 +82,8 @@ public sealed class PodTracker
     private DateTimeOffset _lockedAt;
     private double _rssi;
     private DateTimeOffset _findUntil;
+    /// <summary>The current identity came from following an address change, not from being held next to the PC.</summary>
+    private bool _followed;
 
     public PodTracker(IEnumerable<ushort> models, int lockRssi)
     {
@@ -99,33 +112,44 @@ public sealed class PodTracker
     {
         if (!_models.Contains(ad.Model))
             return OfferResult.OtherModel;
+        if (rssi <= OutOfRange)
+            return _mine.Contains(address) ? OfferResult.Known : OfferResult.NotMine; // not a broadcast: nothing to learn
 
         Forget(now);
         var heard = Hear(address, rssi, ad, now);
-        var close = heard.IsClose(LockRssi);
         var finding = IsFinding(now);
+        // On its own, lock on only to a case opened right next to the PC: AirPods in someone's ears never qualify,
+        // however close they get. In Find mode you're deliberately holding yours there, in any state, so a sustained
+        // strong signal is enough.
+        var caseOpenedHere = ad.CaseOpen && rssi >= LockRssi && heard.Rssi >= LockRssi;
+        var heldHere = heard.IsClose(LockRssi);
+        var close = caseOpenedHere || (finding && heldHere);
 
         if (_mine.Contains(address))
         {
+            if (finding && close)
+            {
+                Reset(); // "these are mine": drop anything followed before
+                Accept(address, rssi, ad, now);
+                Lock(now);
+                return OfferResult.Locked;
+            }
             Accept(address, rssi, ad, now);
-            if (!(finding && close))
-                return OfferResult.Known;
-            Lock(now);
-            return OfferResult.Locked;
+            return OfferResult.Known;
         }
 
         var quiet = _lastSeen == default ? TimeSpan.MaxValue : now - _lastSeen;
 
-        if (close && (finding || quiet >= RelockAfter))
+        if (close && (finding || _followed || quiet >= RelockAfter))
         {
-            if (!IsConsistent(ad))
+            if (finding || _followed || !IsConsistent(ad))
                 Reset();
             Accept(address, rssi, ad, now);
             Lock(now);
             return OfferResult.Locked;
         }
 
-        if (close && now - _lockedAt <= SiblingWindow && IsConsistent(ad))
+        if ((caseOpenedHere || heldHere) && now - _lockedAt <= SiblingWindow && IsConsistent(ad))
         {
             Accept(address, rssi, ad, now);
             return OfferResult.Sibling;
@@ -137,15 +161,18 @@ public sealed class PodTracker
                                  IsFollowCandidate(other.Value)))
         {
             Accept(address, rssi, ad, now);
+            _followed = true;
             return OfferResult.Followed;
         }
 
         return OfferResult.NotMine;
     }
 
-    /// <summary>Could this address be ours after an address change? It must have appeared around when ours went quiet.</summary>
+    /// <summary>Could this address be ours after an address change? It must have first appeared right around when ours went quiet.</summary>
     private bool IsFollowCandidate(Heard heard) =>
-        heard.First >= _lastSeen - NewAddressWindow &&
+        heard.Samples >= FollowSamples &&
+        heard.First >= _lastSeen - NewAddressBefore &&
+        heard.First <= _lastSeen + NewAddressAfter &&
         heard.Rssi >= Math.Max(FollowRssiFloor, _rssi - FollowRssiSlack) &&
         IsConsistent(heard.Ad);
 
@@ -173,7 +200,7 @@ public sealed class PodTracker
             return _heard[address] = new Heard(now, rssi, ad);
 
         // Smooth signal strength while broadcasts keep coming; start afresh after a gap.
-        if (now - heard.Last < FollowAfterQuiet)
+        if (now - heard.Last < SmoothingGap)
         {
             heard.Rssi = heard.Rssi * 0.7 + rssi * 0.3;
             heard.Samples++;
@@ -190,7 +217,7 @@ public sealed class PodTracker
 
     private void Accept(ulong address, int rssi, PodAdvert ad, DateTimeOffset now)
     {
-        _rssi = _lastSeen != default && now - _lastSeen < FollowAfterQuiet ? _rssi * 0.7 + rssi * 0.3 : rssi;
+        _rssi = _lastSeen != default && now - _lastSeen < SmoothingGap ? _rssi * 0.7 + rssi * 0.3 : rssi;
         _mine.Add(address);
         _lastSeen = now;
         _model = ad.Model;
@@ -204,6 +231,7 @@ public sealed class PodTracker
     {
         _lockedAt = now;
         _findUntil = default;
+        _followed = false;
     }
 
     private void Reset()
@@ -211,6 +239,7 @@ public sealed class PodTracker
         _mine.Clear();
         _left = _right = _case = null;
         _lastSeen = default;
+        _followed = false;
     }
 
     private void Forget(DateTimeOffset now)

@@ -9,7 +9,12 @@ public sealed record PodAdvert(
     bool LeftCharging,
     bool RightCharging,
     bool CaseCharging,
-    byte Lid);
+    byte Lid,
+    byte Status = 0)
+{
+    /// <summary>Both earbuds are in the case and the lid is open: what "open your case next to the PC" looks like.</summary>
+    public bool CaseOpen => (Status & 0x04) != 0 && (Lid & 0x08) == 0;
+}
 
 /// <summary>
 /// Decodes Apple's "proximity pairing" Bluetooth LE advertisement (Continuity message type 0x07),
@@ -22,7 +27,8 @@ public sealed record PodAdvert(
 ///  [0]      0x07 message type            [1]  remaining length
 ///  [2]      0x01 (0x00 = pairing mode, which uses a different layout)
 ///  [3..4]   model id, little-endian (same as the Bluetooth PID, e.g. 0x2024)
-///  [5]      status: 0x20 = sent by the left earbud, 0x02 = sender in ear, 0x08 = other earbud in ear
+///  [5]      status: 0x20 = sent by the left earbud, 0x02 = sender in ear, 0x08 = other earbud in ear,
+///           0x04 = both earbuds in the case
 ///  [6]      batteries: low nibble = sending earbud, high nibble = the other; 0-10 = 0-100 %, 0xF = unknown
 ///  [7]      high nibble = charging (0x1 sender, 0x2 other earbud, 0x4 case), low nibble = case battery
 ///  [8]      lid: bits 0-2 open/close counter, 0x08 = closed, high nibble undocumented (differs in case vs in ears)
@@ -58,7 +64,8 @@ public static class ProximityPairing
             LeftCharging: left is not null && (flags & (swapped ? 0x2 : 0x1)) != 0,
             RightCharging: right is not null && (flags & (swapped ? 0x1 : 0x2)) != 0,
             CaseCharging: @case is not null && (flags & 0x4) != 0,
-            Lid: data[8]);
+            Lid: data[8],
+            Status: data[5]);
     }
 
     /// <summary>Known AirPods model ids (also the product id Windows shows for the paired device).</summary>

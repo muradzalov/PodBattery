@@ -31,7 +31,7 @@ This builds the app into `%LOCALAPPDATA%\Programs\PodBattery`, starts it, and ad
 
 ## First run: "Find my AirPods"
 
-On first launch, and whenever you choose **Find my AirPods…**, **open your AirPods case right next to the PC**. This tells PodBattery which AirPods are yours, which matters in an office full of identical ones. After that it follows your AirPods on its own. If it ever loses track, for example after they've been in the case for a while, opening the case near the PC picks them up again.
+**Open your AirPods case right next to the PC for a few seconds.** That's how PodBattery learns which AirPods are yours, which matters in an office full of identical ones. After that it follows your AirPods on its own while you wear them. If it ever loses track, for example after they've been in the case for a while, open the case next to the PC again. **Find my AirPods…** in the menu does the same thing, and also overrides any AirPods it's currently tracking.
 
 ## How it works
 
@@ -40,16 +40,25 @@ AirPods constantly broadcast a small Bluetooth LE message (Apple's *proximity pa
 The broadcasts don't say whose AirPods they are, and each pair changes its Bluetooth address about every 15 minutes, so PodBattery:
 
 1. **Ignores other models.** It only accepts the model IDs of AirPods paired with this PC.
-2. **Locks on** to AirPods with a very strong signal, meaning your case opened right next to the PC.
-3. **Follows** them across address changes. When your current address goes quiet, a new address broadcasting the same battery levels and lid counter at a similar signal strength is yours.
+2. **Locks on** when a case is opened right next to the PC. The broadcast says whether both earbuds are in the case with the lid open, and the signal must be very strong. AirPods in someone's ears never get picked up on their own, however close they are. **Find my AirPods…** also accepts AirPods held next to the PC in any state, as long as the signal stays strong over several broadcasts.
+3. **Follows** them across address changes. A new address appears within seconds of the old one going quiet. If one appears at that moment with the same battery levels and lid state, is heard more than once, and has a similar signal strength, it's yours. Addresses that were already around can't be.
 
 See [`PodTracker.cs`](src/PodBattery/PodTracker.cs) for the rules and [`ProximityPairing.cs`](src/PodBattery/ProximityPairing.cs) for the message format.
+
+### Tests
+
+`dotnet test` runs about 60 tests:
+
+- **Decoder unit tests.** Each checks the decoder against a real AirPods broadcast.
+- **Tracker unit tests.** One for each rule.
+- **Replays of real recordings.** About 25 minutes of broadcasts from a busy office with 20+ AirPods nearby, with each address replaced by a made-up ID. One test checks that the tracker never shows a neighbour's battery. The *adversarial* scenarios come from a review that set out to break the tracker: walking away from your desk, coming back, reception gaps, the app starting with neighbours already around, and Windows' "out of range" reports.
 
 ## Limitations
 
 - **10% steps.** The exact percentages are in an encrypted part of the broadcast that only Apple devices can read.
 - **Closed case = no updates.** AirPods stop broadcasting in a closed case, so the icon turns grey and shows the last known levels until you open it.
-- **Identifying your pair is a best guess.** If it ever shows someone else's AirPods, choose **Find my AirPods…** and open your case next to the PC.
+- **Long absences need the case again.** If your AirPods are away for longer than an address change (a few minutes or more), wearing them won't be picked up again until you open the case next to the PC. In your ears, their signal isn't strong enough to tell them apart from a neighbour's.
+- **Identifying your pair is a best guess.** One rare case is still ambiguous: you walk away wearing your AirPods, and within about 30 seconds a neighbour's pair with the same battery levels changes address at a similar signal strength. In the replay tests that happens in about 1% of timings. If it ever shows someone else's AirPods, open your case next to the PC; that always corrects it.
 
 ## Settings
 

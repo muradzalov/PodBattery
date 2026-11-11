@@ -213,7 +213,7 @@ internal sealed class TrayApp : ApplicationContext
     {
         var tip = view.BluetoothOff ? "PodBattery\nBluetooth is off"
             : view.Finding ? "PodBattery\nOpen your AirPods case next to this PC"
-            : view.Pods is not { } pods ? "PodBattery\nUse “Find my AirPods…” to set up"
+            : view.Pods is not { } pods ? "PodBattery\nOpen your AirPods case next to this PC"
             : $"{ProximityPairing.ModelName(pods.Model)}{(view.Fresh ? "" : " (not in range)")}\n{Summary(pods)}";
         _tray.Text = tip.Length > 127 ? tip[..127] : tip;
     }
@@ -229,7 +229,7 @@ internal sealed class TrayApp : ApplicationContext
 
         _status.Text = view.BluetoothOff ? "Bluetooth is off"
             : view.Finding ? "Looking… open your AirPods case next to this PC"
-            : pods is null ? "Not found yet – use “Find my AirPods…”"
+            : pods is null ? "Not found yet – open your AirPods case next to this PC"
             : view.Fresh ? $"{ProximityPairing.ModelName(pods.Model)} · updated {Ago(view.Now - pods.LastSeen)}"
             : $"Not in range · last seen {LastSeen(pods.LastSeen, view.Now)}";
     }
